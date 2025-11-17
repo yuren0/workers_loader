@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moon影视搜索</title>
+    
+    <!-- 使用官方CDN，确保稳定性 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.6.13/hls.min.js"></script>
+    
+    <!-- Tailwind配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366F1',
+                        secondary: '#818CF8',
+                        dark: '#1E293B',
+                        light: '#F8FAFC'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- 基础样式 -->
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        .movie-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .movie-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .movie-poster {
+            aspect-ratio: 2/3;
+            object-fit: cover;
+        }
+        
+        .episode-btn {
+            transition: all 0.2s ease;
+        }
+        
+        .episode-btn:hover {
+            background-color: #6366F1;
+            color: white;
+        }
+        
+        .episode-btn.active {
+            background-color: #6366F1;
+            color: white;
+        }
+        
+        /* 视频播放器控制栏样式 */
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 0;
+            padding-bottom: 56.25%; /* 16:9 宽高比 */
+        }
+        
+        .video-container video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- 页面容器 -->
+    <div class="container mx-auto px-4 py-6">
+        <!-- 头部搜索区域 -->
+        <header class="mb-8">
+            <div class="text-center mb-6">
+                <h1 class="text-3xl font-bold text-primary flex items-center justify-center">
+                    <i class="fa fa-film mr-2"></i>Moon影视搜索
+                </h1>
+                <p class="text-gray-500 mt-2">搜索并观看您喜爱的电影和电视剧</p>
+            </div>
+            
+            <!-- 搜索框 -->
+            <div class="max-w-2xl mx-auto">
+                <div class="relative">
+                    <input 
+                        id="searchInput" 
+                        type="text" 
+                        placeholder="输入电影或电视剧名称..." 
+                        class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+                        maxlength="50"
+                    >
+                    <button 
+                        id="searchBtn" 
+                        class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg transition-all"
+                    >
+                        <i class="fa fa-search mr-1"></i>搜索
+                    </button>
+                </div>
+                
+                <!-- API选择器 -->
+                <div class="mt-4 flex items-center justify-center">
+                    <label for="apiSelector" class="text-sm text-gray-600 mr-2">选择数据源：</label>
+                    <select id="apiSelector" class="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary">
+                        <option value="https://corsapi-no18.yuren0.us.kg/?url=https://iqiyizyapi.com/api.php/provide/vod/?ac=videolist&wd=">🎬爱奇艺源</option>
+                        <option value="https://corsapi-no18.yuren0.us.kg/?url=https://caiji.dbzy5.com/api.php/provide/vod/?ac=videolist&wd=">🎬豆瓣资源</option>
+                        <option value="https://corsapi-no18.yuren0.us.kg/?url=https://tyyszy.com/api.php/provide/vod/?ac=videolist&wd=">🎬天涯影视</option>
+                    </select>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 主内容区 -->
+        <main>
+            <!-- 欢迎信息 -->
+            <div id="welcomeSection" class="text-center py-16">
+                <i class="fa fa-film text-primary text-6xl mb-6"></i>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">开始您的观影之旅</h2>
+                <p class="text-gray-600">在上方搜索框输入电影或电视剧名称，即刻开始搜索</p>
+            </div>
+            
+            <!-- 修改搜索结果信息区域 -->
+            <div id="searchInfo" class="mb-4 text-gray-600 hidden">
+                搜索 "<span id="searchKeyword" class="font-medium text-primary"></span>" 的结果
+                <span id="resultCount" class="ml-2 text-gray-500"></span>
+            </div>
+            
+            <!-- 分页控件 -->
+            <div id="paginationControls" class="flex justify-between items-center mt-6 mb-4 hidden">
+                <div id="pageInfo" class="text-sm text-gray-500"></div>
+                <div class="flex gap-2">
+                    <button id="prevPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa fa-chevron-left mr-1"></i> 上一页
+                    </button>
+                    <button id="nextPageBtn" class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        下一页 <i class="fa fa-chevron-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 加载状态 -->
+            <div id="loadingIndicator" class="hidden flex justify-center items-center py-16">
+                <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-primary"></div>
+            </div>
+            
+            <!-- 错误提示 -->
+            <div id="errorMessage" class="hidden p-4 bg-red-50 border border-red-200 rounded-lg text-red-600 mb-6">
+                <i class="fa fa-exclamation-circle mr-2"></i>
+                <span id="errorText">加载失败，请稍后重试</span>
+                <button id="retryBtn" class="ml-4 px-4 py-1 bg-primary hover:bg-primary/90 text-white rounded-md">
+                    立即重试
+                </button>
+            </div>
+            
+            <!-- 搜索结果网格 -->
+            <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <!-- 搜索结果将动态插入这里 -->
+            </div>
+            
+            <!-- 底部搜索结果信息区域 -->
+            <div id="bottomSearchInfo" class="mb-4 text-gray-600 hidden mt-8">
+                搜索 "<span id="bottomSearchKeyword" class="font-medium text-primary"></span>" 的结果
+                <span id="bottomResultCount" class="ml-2 text-gray-500"></span>
+            </div>
+            
+            <!-- 底部分页控件 -->
+            <div id="bottomPaginationControls" class="flex justify-between items-center mt-6 mb-4 hidden">
+                <div id="bottomPageInfo" class="text-sm text-gray-500"></div>
+                <div class="flex gap-2">
+                    <button id="bottomPrevPageBtn" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <i class="fa fa-chevron-left mr-1"></i> 上一页
+                    </button>
+                    <button id="bottomNextPageBtn" class="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-md disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        下一页 <i class="fa fa-chevron-right ml-1"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 空状态 -->
+            <div id="emptyState" class="hidden py-16 text-center">
+                <i class="fa fa-search text-gray-300 text-5xl mb-4"></i>
+                <p class="text-gray-500 text-lg">未找到相关内容</p>
+                <p class="text-gray-400 mt-2">请尝试使用其他关键词或数据源</p>
+            </div>
+        </main>
+    </div>
+    
+    <!-- 电影详情模态框 -->
+    <div id="movieModal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-5xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+            <!-- 模态框头部 -->
+            <div class="p-4 border-b flex justify-between items-center">
+                <h2 id="modalTitle" class="text-xl font-bold text-gray-800"></h2>
+                <button id="closeModal" class="text-gray-500 hover:text-gray-700 text-xl">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- 模态框内容 -->
+            <div class="overflow-y-auto flex-grow">
+                <!-- 视频播放器 -->
+                <div class="relative bg-black">
+                    <div class="video-container">
+                        <video 
+                            id="videoPlayer" 
+                            controls 
+                            playsinline
+                            webkit-playsinline
+                        >
+                            您的浏览器不支持HTML5视频播放
+                        </video>
+                    </div>
+                </div>
+                
+                <!-- 集数选择 -->
+                <div class="p-4 border-b">
+                    <h3 class="font-medium mb-3">选集：</h3>
+                    <div class="flex flex-wrap gap-2" id="episodeContainer">
+                        <!-- 集数按钮将动态生成 -->
+                    </div>
+                </div>
+                
+                <!-- 电影详情信息 -->
+                <div class="p-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="md:col-span-1">
+                            <img id="movieImage" src="" alt="电影封面" class="w-full rounded-lg shadow-md">
+                        </div>
+                        <div class="md:col-span-2">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <p class="text-sm text-gray-500">类型</p>
+                                    <p id="movieType" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">地区</p>
+                                    <p id="movieArea" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">年份</p>
+                                    <p id="movieYear" class="font-medium"></p>
+                                </div>
+                                <div>
+                                    <p class="text-sm text-gray-500">导演</p>
+                                    <p id="movieDirector" class="font-medium"></p>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <p class="text-sm text-gray-500">主演</p>
+                                    <p id="movieActor" class="font-medium"></p>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <p class="text-sm text-gray-500">简介</p>
+                                    <p id="movieContent" class="font-medium text-gray-700 mt-1"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript -->
+    <script>
+        // 全局变量
+        let player = null;
+        let hls = null;
+        let currentMovieData = null;
+        let currentPage = 1;
+        let totalCount = 0;
+        let currentSearchKeyword = '';
+        let cumulativeResultCount = 0; // 用于累计结果数
+        
+        // DOM元素
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const apiSelector = document.getElementById('apiSelector');
+        const resultsGrid = document.getElementById('resultsGrid');
+        const welcomeSection = document.getElementById('welcomeSection');
+        const searchInfo = document.getElementById('searchInfo');
+        const searchKeyword = document.getElementById('searchKeyword');
+        const resultCount = document.getElementById('resultCount'); // 确保这个元素存在
+        const pageInfo = document.getElementById('pageInfo');
+        const paginationControls = document.getElementById('paginationControls');
+        const prevPageBtn = document.getElementById('prevPageBtn');
+        const nextPageBtn = document.getElementById('nextPageBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const retryBtn = document.getElementById('retryBtn'); // 新增重试按钮
+        const emptyState = document.getElementById('emptyState');
+        const movieModal = document.getElementById('movieModal');
+        const closeModal = document.getElementById('closeModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const movieImage = document.getElementById('movieImage');
+        const movieType = document.getElementById('movieType');
+        const movieArea = document.getElementById('movieArea');
+        const movieYear = document.getElementById('movieYear');
+        const movieDirector = document.getElementById('movieDirector');
+        const movieActor = document.getElementById('movieActor');
+        const movieContent = document.getElementById('movieContent');
+        const episodeContainer = document.getElementById('episodeContainer');
+        // 底部分页元素
+        const bottomPaginationControls = document.getElementById('bottomPaginationControls');
+        const bottomPageInfo = document.getElementById('bottomPageInfo');
+        const bottomPrevPageBtn = document.getElementById('bottomPrevPageBtn');
+        const bottomNextPageBtn = document.getElementById('bottomNextPageBtn');
+        // 底部搜索信息元素
+        const bottomSearchInfo = document.getElementById('bottomSearchInfo');
+        const bottomSearchKeyword = document.getElementById('bottomSearchKeyword');
+        const bottomResultCount = document.getElementById('bottomResultCount');
+        
+        // 初始化视频播放器
+        function initVideoPlayer() {
+            const video = document.getElementById('videoPlayer');
+            if (Hls.isSupported()) {
+                hls = new Hls();
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // 对于Safari浏览器，原生支持HLS
+                console.log('使用Safari原生HLS支持');
+            } else {
+                console.error('该浏览器不支持HLS播放');
+                alert('您的浏览器不支持HLS视频播放');
+            }
+        }
+        
+        // 搜索函数
+        function searchMovies(keyword, page = 1) {
+            // 保存当前搜索状态
+            currentSearchKeyword = keyword;
+            currentPage = page;
+            
+            // 重置UI状态
+            resetUI();
+            
+            // 显示加载状态
+            loadingIndicator.classList.remove('hidden');
+            welcomeSection.classList.add('hidden');
+            
+            // URL编码关键词
+            const encodedKeyword = encodeURIComponent(keyword);
+            searchKeyword.textContent = keyword;
+            
+            // 构建API URL，添加分页参数
+            const apiUrl = apiSelector.value;
+            const searchUrl = `${apiUrl}${encodedKeyword}&pg=${page}`;
+            
+            // 使用XMLHttpRequest确保更好的兼容性
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', searchUrl, true);
+            xhr.timeout = 15000; // 15秒超时
+            
+            xhr.onload = function() {
+                loadingIndicator.classList.add('hidden');
+                
+                if (xhr.status === 200) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        
+                        // 尝试从响应中获取总资源数（尝试多种可能的字段名）
+                        totalCount = 0;
+                        const possibleTotalFields = ['total', 'pagecount', 'count', 'totalcount', 'totalCount', 'allcount', 'total_num', 'num_total'];
+                        
+                        for (const field of possibleTotalFields) {
+                            if (response[field] !== undefined && response[field] !== null && !isNaN(Number(response[field]))) {
+                                totalCount = Number(response[field]);
+                                break;
+                            }
+                        }
+                        
+                        // 计算累计结果数
+                        const currentResultCount = response.list ? response.list.length : 0;
+                        // 如果是第一页，则重新开始计数；否则累加上一页的结果数
+                        if (page === 1) {
+                            cumulativeResultCount = currentResultCount;
+                        } else {
+                            // 根据页面计算累计结果数
+                            cumulativeResultCount = (page - 1) * 20 + currentResultCount; // 假设每页20个项目
+                        }
+                        
+                        if (response.code === 1 && response.list && response.list.length > 0) {
+                            // 有搜索结果
+                            searchInfo.classList.remove('hidden');
+                            bottomSearchInfo.classList.remove('hidden');
+                            paginationControls.classList.remove('hidden');
+                            
+                            // 直接在页面上更新资源数量显示
+                            if (resultCount) {
+                                resultCount.textContent = `(总资源数: ${totalCount || 0}，当前资源数: ${currentResultCount}，累计资源数: ${cumulativeResultCount})`;
+                            }
+                            
+                            // 更新底部搜索关键词
+                            if (bottomSearchKeyword) {
+                                bottomSearchKeyword.textContent = keyword;
+                            }
+                            
+                            displaySearchResults(response.list, cumulativeResultCount);
+                            updatePaginationControls();
+                        } else {
+                            // 无搜索结果
+                            emptyState.classList.remove('hidden');
+                        }
+                    } catch (parseError) {
+                        showError('数据解析失败，请稍后重试');
+                        console.error('JSON解析错误:', parseError);
+                    }
+                } else {
+                    showError(`请求失败，状态码: ${xhr.status}`);
+                }
+            };
+            
+            xhr.onerror = function() {
+                loadingIndicator.classList.add('hidden');
+                showError('网络连接失败，请检查网络设置');
+            };
+            
+            xhr.ontimeout = function() {
+                loadingIndicator.classList.add('hidden');
+                showError('请求超时，请稍后重试');
+            };
+            
+            xhr.send();
+        }
+        
+        // 显示搜索结果
+        function displaySearchResults(movies, cumulativeCount) {
+            resultsGrid.innerHTML = '';
+            
+            // 确保在页面上显示资源数量（双重保障）
+            if (resultCount) {
+                resultCount.textContent = `(总资源数: ${totalCount || 0}，累计资源数: ${cumulativeCount})`;
+            }
+            
+            // 更新底部资源数量显示
+            if (bottomResultCount) {
+                bottomResultCount.textContent = `(总资源数: ${totalCount || 0}，累计资源数: ${cumulativeCount})`;
+            }
+            
+            // 更新页码信息
+            if (pageInfo) {
+                pageInfo.textContent = `第 ${currentPage} 页`;
+            }
+            
+            // 更新底部分页信息
+            if (bottomPageInfo) {
+                bottomPageInfo.textContent = `第 ${currentPage} 页`;
+            }
+            
+            // 更新底部搜索关键词
+            if (bottomSearchKeyword) {
+                bottomSearchKeyword.textContent = currentSearchKeyword;
+            }
+            
+            movies.forEach(movie => {
+                // 创建电影卡片
+                const card = document.createElement('div');
+                card.className = 'movie-card bg-white rounded-lg overflow-hidden shadow cursor-pointer';
+                
+                // 填充卡片内容
+                const poster = movie.vod_pic || 'https://via.placeholder.com/300x450?text=暂无封面';
+                const title = movie.vod_name || '未知影片';
+                const type = movie.type_name || movie.vod_class || '未知类型';
+                const year = movie.vod_year || '未知年份';
+                
+                card.innerHTML = `
+                    <div class="relative aspect-[2/3]">
+                        <img src="${poster}" alt="${title}" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/300x450?text=暂无封面'">
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                            <span class="text-white text-xs">${type}</span>
+                        </div>
+                    </div>
+                    <div class="p-2">
+                        <h3 class="font-medium text-gray-800 truncate" title="${title}">${title}</h3>
+                        <p class="text-xs text-gray-500 mt-1">${year}</p>
+                    </div>
+                `;
+                
+                // 点击卡片显示详情
+                card.addEventListener('click', function() {
+                    showMovieDetails(movie);
+                });
+                
+                resultsGrid.appendChild(card);
+            });
+        }
+        
+        // 显示电影详情
+        function showMovieDetails(movie) {
+            console.log('显示电影详情:', movie);
+            currentMovieData = movie;
+            
+            // 更新模态框信息
+            modalTitle.textContent = movie.vod_name || '未知影片';
+            movieImage.src = movie.vod_pic || 'https://via.placeholder.com/300x450?text=暂无封面';
+            movieType.textContent = movie.vod_class || movie.type_name || '未知类型';
+            movieArea.textContent = movie.vod_area || '未知地区';
+            movieYear.textContent = movie.vod_year || '未知年份';
+            movieDirector.textContent = movie.vod_director || '未知导演';
+            movieActor.textContent = movie.vod_actor || '未知演员';
+            
+            // 处理简介内容
+            let contentText = '暂无简介';
+            if (movie.vod_content) {
+                // 移除HTML标签
+                contentText = movie.vod_content.replace(/<[^>]*>/g, '');
+            } else if (movie.vod_blurb) {
+                contentText = movie.vod_blurb;
+            }
+            movieContent.textContent = contentText;
+            
+            // 解析和显示播放集数
+            parseAndDisplayEpisodes(movie.vod_play_url);
+            
+            // 显示模态框
+            movieModal.classList.remove('hidden');
+        }
+        
+        // 修改解析和显示播放集数的函数
+        function parseAndDisplayEpisodes(playUrlStr) {
+            episodeContainer.innerHTML = '';
+            
+            console.log('解析播放地址:', playUrlStr);
+            
+            if (!playUrlStr) {
+                episodeContainer.innerHTML = '<p class="text-gray-500">暂无播放源</p>';
+                return;
+            }
+            
+            try {
+                // 解析播放地址格式 - 修复末尾#号问题
+                const episodes = [];
+                
+                // 去除末尾可能的#号
+                const cleanUrlStr = playUrlStr.replace(/\s*#\s*$/, '');
+                console.log('清理后的播放地址:', cleanUrlStr);
+                
+                // 分割不同的播放格式
+                const formats = cleanUrlStr.split('#');
+                
+                formats.forEach(format => {
+                    if (!format.trim()) return;
+                    
+                    console.log('处理格式:', format);
+                    // 分割集数标题和地址
+                    const parts = format.split('$');
+                    if (parts.length >= 2) {
+                        episodes.push({
+                            title: parts[0].trim(),
+                            url: parts[1].trim()
+                        });
+                    }
+                });
+                
+                // 如果没有解析出集数，尝试直接使用整个字符串作为URL
+                if (episodes.length === 0 && cleanUrlStr.includes('http')) {
+                    console.log('直接使用URL作为播放源');
+                    episodes.push({
+                        title: '播放',
+                        url: cleanUrlStr
+                    });
+                }
+                
+                console.log('解析结果:', episodes);
+                
+                if (episodes.length === 0) {
+                    episodeContainer.innerHTML = '<p class="text-gray-500">暂无播放源</p>';
+                    return;
+                }
+                
+                // 创建集数按钮
+                episodes.forEach((episode, index) => {
+                    const button = document.createElement('button');
+                    button.className = `episode-btn px-3 py-1.5 rounded-md text-sm ${index === 0 ? 'active' : 'bg-gray-100 text-gray-700'}`;
+                    button.textContent = episode.title;
+                    
+                    // 添加点击事件
+                    button.addEventListener('click', function() {
+                        // 移除其他按钮的激活状态
+                        document.querySelectorAll('.episode-btn').forEach(btn => {
+                            btn.classList.remove('active');
+                            btn.classList.add('bg-gray-100', 'text-gray-700');
+                        });
+                        
+                        // 添加当前按钮的激活状态
+                        this.classList.add('active');
+                        this.classList.remove('bg-gray-100', 'text-gray-700');
+                        
+                        // 播放视频
+                        playVideo(episode.url);
+                    });
+                    
+                    episodeContainer.appendChild(button);
+                });
+                
+                // 自动播放第一个集数
+                playVideo(episodes[0].url);
+                
+            } catch (err) {
+                console.error('解析播放地址失败:', err);
+                episodeContainer.innerHTML = `<p class="text-gray-500">播放源解析失败: ${err.message}</p>`;
+            }
+        }
+        
+        // 修改播放视频函数，使用hls.js播放视频
+        function playVideo(videoUrl) {
+            console.log('尝试播放视频:', videoUrl);
+            
+            const video = document.getElementById('videoPlayer');
+            
+            // 清除之前的播放实例
+            if (hls) {
+                hls.destroy();
+            }
+            
+            try {
+                if (Hls.isSupported()) {
+                    hls = new Hls();
+                    hls.loadSource(videoUrl);
+                    hls.attachMedia(video);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                        video.play();
+                    });
+                    hls.on(Hls.Events.ERROR, function(event, data) {
+                        //console.error('HLS播放错误:', data);
+                        // alert('视频播放失败: ' + data.details);
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Safari浏览器原生支持HLS
+                    video.src = videoUrl;
+                    video.addEventListener('loadedmetadata', function() {
+                        video.play();
+                    });
+                } else {
+                    console.error('该浏览器不支持HLS播放');
+                    alert('您的浏览器不支持HLS视频播放');
+                }
+            } catch (err) {
+                console.error('播放视频失败:', err);
+                alert('视频播放失败，请尝试其他集数或检查网络连接: ' + err.message);
+            }
+        }
+        
+        // 重置UI
+        function resetUI() {
+            resultsGrid.innerHTML = '';
+            searchInfo.classList.add('hidden');
+            bottomSearchInfo.classList.add('hidden');
+            paginationControls.classList.add('hidden');
+            bottomPaginationControls.classList.add('hidden');
+            errorMessage.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            resultCount.textContent = '';
+            pageInfo.textContent = '';
+            bottomPageInfo.textContent = '';
+            bottomResultCount.textContent = '';
+        }
+        
+        // 显示错误
+        function showError(message) {
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+        
+        // 获取并填充API列表
+        function fetchAndPopulateAPIList() {
+            console.log('正在获取API列表...');
+            
+            // 使用XMLHttpRequest确保更好的兼容性
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', 'https://corsapi.yuren0.us.kg?config=1', true);
+            xhr.timeout = 15000; // 15秒超时
+            
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        console.log('API列表获取成功:', response);
+                        
+                        if (response.api_site) {
+                            // 清空现有选项
+                            apiSelector.innerHTML = '';
+                            
+                            // 遍历所有API接口
+                            for (const [key, site] of Object.entries(response.api_site)) {
+                                if (site.name && site.api) {
+                                    const option = document.createElement('option');
+                                    // 构建完整的API URL，添加搜索参数
+                                    const fullApiUrl = `${site.api}/?ac=videolist&wd=`;
+                                    option.value = fullApiUrl;
+                                    option.textContent = site.name;
+                                    apiSelector.appendChild(option);
+                                }
+                            }
+                            
+                            // 如果没有添加任何选项，添加默认选项
+                            if (apiSelector.options.length === 0) {
+                                const defaultOption = document.createElement('option');
+                                defaultOption.value = 'https://corsapi-no18.yuren0.us.kg/?url=https://iqiyizyapi.com/api.php/provide/vod/?ac=videolist&wd=';
+                                defaultOption.textContent = '🎬爱奇艺源';
+                                apiSelector.appendChild(defaultOption);
+                            }
+                        }
+                    } catch (parseError) {
+                        console.error('解析API列表JSON失败:', parseError);
+                        // 保留现有选项
+                    }
+                } else {
+                    console.error('获取API列表失败，状态码:', xhr.status);
+                    // 保留现有选项
+                }
+            };
+            
+            xhr.onerror = function() {
+                console.error('获取API列表网络错误');
+                // 保留现有选项
+            };
+            
+            xhr.ontimeout = function() {
+                console.error('获取API列表请求超时');
+                // 保留现有选项
+            };
+            
+            xhr.send();
+        }
+        
+        // 事件监听器
+        function setupEventListeners() {
+            // 搜索按钮点击
+            searchBtn.addEventListener('click', function() {
+                const keyword = searchInput.value.trim();
+                if (keyword) {
+                    searchMovies(keyword, 1); // 重置到第一页
+                } else {
+                    alert('请输入搜索关键词');
+                }
+            });
+            
+            // 回车搜索
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    const keyword = searchInput.value.trim();
+                    if (keyword) {
+                        searchMovies(keyword, 1); // 重置到第一页
+                    }
+                }
+            });
+            
+            // 添加重试按钮事件监听器
+            retryBtn.addEventListener('click', function() {
+                if (currentSearchKeyword) {
+                    searchMovies(currentSearchKeyword, currentPage);
+                }
+            });
+            
+            // API选择器改变时重置搜索
+            apiSelector.addEventListener('change', function() {
+                if (currentSearchKeyword) {
+                    searchMovies(currentSearchKeyword, 1); // 重置到第一页
+                }
+            });
+            
+            // 上一页按钮
+            prevPageBtn.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    searchMovies(currentSearchKeyword, currentPage - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+            
+            // 下一页按钮
+            nextPageBtn.addEventListener('click', function() {
+                searchMovies(currentSearchKeyword, currentPage + 1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+            
+            // 底部上一页按钮
+            bottomPrevPageBtn.addEventListener('click', function() {
+                if (currentPage > 1) {
+                    searchMovies(currentSearchKeyword, currentPage - 1);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+            
+            // 底部下一页按钮
+            bottomNextPageBtn.addEventListener('click', function() {
+                searchMovies(currentSearchKeyword, currentPage + 1);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+            
+            // 关闭模态框
+            closeModal.addEventListener('click', function() {
+                movieModal.classList.add('hidden');
+                if (hls) {
+                    hls.destroy();
+                }
+            });
+            
+            // 点击模态框背景关闭
+            movieModal.addEventListener('click', function(e) {
+                if (e.target === movieModal) {
+                    movieModal.classList.add('hidden');
+                    if (hls) {
+                        hls.destroy();
+                    }
+                }
+            });
+            
+            // 阻止模态框内容点击事件冒泡
+            document.querySelector('#movieModal > div').addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            // 窗口大小改变时调整播放器
+            window.addEventListener('resize', function() {
+                if (player) {
+                    try {
+                        player.resize();
+                    } catch (err) {
+                        console.warn('调整播放器大小失败:', err);
+                    }
+                }
+            });
+        }
+        
+        // 页面加载完成初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('Moon影视搜索页面加载完成');
+            
+            // 首先获取API列表
+            fetchAndPopulateAPIList();
+            
+            // 设置事件监听器
+            setupEventListeners();
+            
+            // 初始化视频播放器
+            initVideoPlayer();
+        });
+        function updatePaginationControls() {
+            // 更新上一页按钮状态
+            prevPageBtn.disabled = currentPage <= 1;
+            bottomPrevPageBtn.disabled = currentPage <= 1;
+    
+            // 简单的下一页逻辑：如果有结果就显示下一页按钮
+            // 实际应用中可能需要根据总页数来判断
+            nextPageBtn.disabled = false;
+            bottomNextPageBtn.disabled = false;
+            
+            // 显示分页控件
+            paginationControls.classList.remove('hidden');
+            bottomPaginationControls.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
