@@ -531,7 +531,11 @@
         // 修改解析和显示播放集数的函数
         function parseAndDisplayEpisodes(playUrlStr) {
             episodeContainer.innerHTML = '';
-            
+            // 查找并截取 $$$
+            if (playUrlStr.indexOf('$$$') !== -1) {
+                // 查找到 $$$
+                playUrlStr = playUrlStr.substring(0, playUrlStr.indexOf('$$$'));
+            }
             console.log('解析播放地址:', playUrlStr);
             
             if (!playUrlStr) {
